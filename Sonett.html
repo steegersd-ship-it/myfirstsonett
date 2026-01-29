@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Sonett Hochhaus - Barock & Reim Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #0f172a; }
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            color: white;
+            max-width: 350px;
+            z-index: 10;
+        }
+        .info-card {
+            background: rgba(15, 23, 42, 0.92);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            margin-bottom: 10px;
+            pointer-events: auto;
+            backdrop-filter: blur(8px);
+        }
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            color: #0f172a;
+            padding: 6px 12px;
+            border-radius: 6px;
+            display: none;
+            pointer-events: none;
+            font-size: 13px;
+            font-weight: bold;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <div class="info-card border-l-4 border-amber-500">
+            <h1 class="text-xl font-bold mb-1 text-amber-400">Das Sonett-Hochhaus</h1>
+            <p class="text-[10px] text-slate-400 mb-2 uppercase tracking-tighter">Architektur der Reime & Metrik</p>
+            <p class="text-xs text-slate-300 italic">"Was gestern war ist hin / was itzt das Glück erhebt..."</p>
+        </div>
+        <div id="detail-card" class="info-card hidden">
+            <h2 id="part-title" class="font-bold text-amber-400 text-lg"></h2>
+            <div id="part-meta" class="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold border-b border-slate-700 pb-1"></div>
+            <p id="part-desc" class="text-sm text-slate-200 leading-relaxed italic"></p>
+            <div id="part-rhyme" class="mt-2 font-mono text-blue-400 font-bold text-sm"></div>
+            <div id="part-extra" class="mt-3 text-[11px] text-amber-200 bg-amber-900/30 p-2 rounded"></div>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+        let scene, camera, renderer, towerGroup;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let clientX = 0, clientY = 0;
+        let hoveredObj = null;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.04);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(13, 11, 19);
+            camera.lookAt(0, 4, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const pLight = new THREE.PointLight(0xffffff, 1.2);
+            pLight.position.set(15, 25, 15);
+            scene.add(pLight);
+
+            towerGroup = new THREE.Group();
+            scene.add(towerGroup);
+
+            // ETAGE 1: 1. Quartett
+            createFloor(0, 0x3b82f6, "1. Quartett", "THESE (BEHAUPTUNG)", 
+                "Einführung des Themas im strengen 6-hebigen Jambus.",
+                "Motive: Vanitas & Memento Mori", "Reimschema: a b b a (Umfassend)");
+
+            // ETAGE 2: 2. Quartett
+            createFloor(2.2, 0x2563eb, "2. Quartett", "ANTITHESE (WIDERSPRUCH)", 
+                "Verstärkung des Konflikts durch Symmetrie und Kumulation.",
+                "Stil: Parallelismus & Alexandriner", "Reimschema: a b b a (Umfassend)");
+
+            // VOLTA / ZÄSUR
+            const voltaGeom = new THREE.BoxGeometry(6.2, 0.4, 6.2);
+            const voltaMat = new THREE.MeshPhongMaterial({ color: 0xef4444, emissive: 0x440000 });
+            const volta = new THREE.Mesh(voltaGeom, voltaMat);
+            volta.position.y = 4.3;
+            volta.userData = { 
+                title: "Die Volta / Zäsur", 
+                meta: "FORMALER & INHALTLICHER BRUCH", 
+                desc: "Umschlagspunkt: Die strenge Ordnung der Quartette wird in die Terzette überführt.",
+                extra: "Funktion: Bändigung des Chaos",
+                rhyme: "Kein Reim (Schnittstelle)"
+            };
+            towerGroup.add(volta);
+
+            // ETAGE 3: 1. Terzett
+            createFloor(4.6, 0x8b5cf6, "1. Terzett", "SYNTHESE (BILANZ)", 
+                "Zusammenführung der Gegensätze zu einer Bilanz.",
+                "Motive: Carpe Diem", "Reimschema: c d c (oder c d e)");
+
+            // ETAGE 4: 2. Terzett
+            createFloor(6.8, 0x7c3aed, "2. Terzett", "FINALE (POINTE)", 
+                "Abschluss mit Finalstruktur oder einer überraschenden Synthese.",
+                "Stil: Synthese & Ordnung", "Reimschema: d c d (oder c d e)");
+
+            // VISUALISIERUNG REIMSCHEMA (Bögen)
+            createRhymeArc(1, 3, 0x60a5fa, "a-Reim"); // Quartett a-a
+            createRhymeArc(1.8, 2.4, 0x93c5fd, "b-Reim"); // Quartett b-b
+            createRhymeArc(5.5, 7.5, 0xc084fc, "c/d-Reim"); // Terzett Konnektor
+
+            // ALEXANDRINER SÄULEN (6 Hebungen)
+            for(let i=0; i<6; i++) {
+                const poleGeom = new THREE.CylinderGeometry(0.04, 0.04, 10);
+                const poleMat = new THREE.MeshBasicMaterial({color: 0x334155, transparent: true, opacity: 0.5});
+                const pole = new THREE.Mesh(poleGeom, poleMat);
+                const angle = (i / 6) * Math.PI * 2;
+                pole.position.set(Math.cos(angle)*3.8, 5, Math.sin(angle)*3.8);
+                towerGroup.add(pole);
+            }
+
+            const grid = new THREE.GridHelper(40, 40, 0x1e293b, 0x1e293b);
+            scene.add(grid);
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('mousemove', onMouseMove, false);
+            animate();
+        }
+
+        function createFloor(y, color, title, meta, desc, extra, rhyme) {
+            const geometry = new THREE.BoxGeometry(5.2, 2, 5.2);
+            const material = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.82, shininess: 70 });
+            const floor = new THREE.Mesh(geometry, material);
+            floor.position.set(0, y + 1, 0);
+            floor.userData = { title, meta, desc, extra, rhyme };
+            towerGroup.add(floor);
+
+            const edges = new THREE.EdgesGeometry(geometry);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.25, transparent: true }));
+            floor.add(line);
+        }
+
+        function createRhymeArc(yStart, yEnd, color, label) {
+            const curve = new THREE.QuadraticBezierCurve3(
+                new THREE.Vector3(2.7, yStart, 0),
+                new THREE.Vector3(4.5, (yStart + yEnd)/2, 0),
+                new THREE.Vector3(2.7, yEnd, 0)
+            );
+            const points = curve.getPoints(20);
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: color, linewidth: 2 });
+            const arc = new THREE.Line(geometry, material);
+            towerGroup.add(arc);
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            clientX = event.clientX;
+            clientY = event.clientY;
+            // Interaktive Rotation
+            towerGroup.rotation.y = mouse.x * 0.5;
+            towerGroup.rotation.x = -mouse.y * 0.2;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(towerGroup.children);
+
+            const tooltip = document.getElementById('tooltip');
+            const detailCard = document.getElementById('detail-card');
+
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                if (obj.userData.title && hoveredObj !== obj) {
+                    hoveredObj = obj;
+                    document.getElementById('part-title').innerText = obj.userData.title;
+                    document.getElementById('part-meta').innerText = obj.userData.meta;
+                    document.getElementById('part-desc').innerText = obj.userData.desc;
+                    document.getElementById('part-extra').innerText = obj.userData.extra;
+                    document.getElementById('part-rhyme').innerText = obj.userData.rhyme || "";
+                    detailCard.classList.remove('hidden');
+                }
+                if(obj.userData.title) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (clientX + 15) + 'px';
+                    tooltip.style.top = (clientY - 15) + 'px';
+                    tooltip.innerText = obj.userData.title;
+                }
+            } else {
+                hoveredObj = null;
+                tooltip.style.display = 'none';
+                detailCard.classList.add('hidden');
+            }
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
